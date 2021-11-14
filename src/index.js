@@ -1,7 +1,18 @@
-import React from 'react'
+import React, { useRef, useEffect } from 'react'
 import ReactDOM from 'react-dom'
 import 'tailwindcss/tailwind.css'
 
-import Scene from 'components/scene.js'
+import Game from 'components/game'
 
-ReactDOM.render(<Scene />, document.getElementById('root'))
+const Canvas = () => {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) {
+      const game = new Game(ref.current);
+      console.log('game', game)
+    }
+  }, [ref])
+  return <div ref={ref} className="h-screen w-screen" />
+}
+
+ReactDOM.render(<Canvas />, document.getElementById('root'))
