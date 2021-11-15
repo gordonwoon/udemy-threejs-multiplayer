@@ -1,11 +1,10 @@
 import * as THREE from 'three'
-import FBXLoader from 'three-fbx-loader'
-import { io } from 'socket.io-client'
+import { FBXLoader } from 'helpers/FBXLoader'
 import Detector from 'helpers/detector'
-import { Easing, Tween, SFX, JoyStick, Preloader,  } from 'helpers/toon3d'
+import { Easing, Tween, SFX, JoyStick, Preloader } from 'helpers/toon3d'
 
 export default class Game {
-  constructor(ref) {
+  constructor(ref, socket) {
     if (!Detector.webgl) Detector.addGetWebGLMessage()
 
     this.modes = Object.freeze({
@@ -18,6 +17,7 @@ export default class Game {
     })
     this.mode = this.modes.NONE
 
+    this.socket = socket
     this.container
     this.player
     this.cameras
@@ -372,8 +372,8 @@ export default class Game {
     // calculate mouse position in normalized device coordinates
     // (-1 to +1) for both components
     const mouse = new THREE.Vector2()
-    mouse.x = (event.clientX / this.renderer.domElement.clientWidth) * 2 - 1
-    mouse.y = -(event.clientY / this.renderer.domElement.clientHeight) * 2 + 1
+    mouse.x = (event.clientX / this.renderer.domElement.width) * 2 - 1
+    mouse.y = -(event.clientY / this.renderer.domElement.height) * 2 + 1
 
     const raycaster = new THREE.Raycaster()
     raycaster.setFromCamera(mouse, this.camera)
@@ -440,17 +440,17 @@ export default class Game {
 
     this.updateRemotePlayers(dt)
 
-    if (this.player.mixer != undefined && this.mode == this.modes.ACTIVE)
+    if (this.player?.mixer != undefined && this.mode == this.modes.ACTIVE)
       this.player.mixer.update(dt)
 
-    if (this.player.action == 'Walking') {
+    if (this.player?.action == 'Walking') {
       const elapsedTime = Date.now() - this.player.actionTime
       if (elapsedTime > 1000 && this.player.motion.forward > 0) {
         this.player.action = 'Running'
       }
     }
 
-    if (this.player.motion !== undefined) this.player.move(dt)
+    if (this.player?.motion !== undefined) this.player.move(dt)
 
     if (
       this.cameras != undefined &&
@@ -632,14 +632,16 @@ class PlayerLocal extends Player {
     super(game, model)
 
     const player = this
-    const socket = io.connect()
-    socket.on('setId', function (data) {
+    player.id = game.socket.id
+
+    game.socket.on('setId', function (data) {
       player.id = data.id
+      console.log('data', data)
     })
-    socket.on('remoteData', function (data) {
+    game.socket.on('remoteData', function (data) {
       game.remoteData = data
     })
-    socket.on('deletePlayer', function (data) {
+    game.socket.on('deletePlayer', function (data) {
       const players = game.remotePlayers.filter(function (player) {
         if (player.id == data.id) {
           return player
@@ -650,19 +652,19 @@ class PlayerLocal extends Player {
         if (index != -1) {
           game.remotePlayers.splice(index, 1)
           game.scene.remove(players[0].object)
-        }
-      } else {
-        index = game.initialisingPlayers.indexOf(data.id)
-        if (index != -1) {
-          const player = game.initialisingPlayers[index]
-          player.deleted = true
-          game.initialisingPlayers.splice(index, 1)
+        } else {
+          index = game.initialisingPlayers.indexOf(data.id)
+          if (index != -1) {
+            const player = game.initialisingPlayers[index]
+            player.deleted = true
+            game.initialisingPlayers.splice(index, 1)
+          }
         }
       }
     })
 
-    socket.on('chat message', function (data) {
-      document.getElementById('chat').style.bottom = '0px'
+    game.socket.on('chat message', function (data) {
+      // document.getElementById('chat').style.bottom = '0px'
       const player = game.getRemotePlayerById(data.id)
       game.speechBubble.player = player
       game.chatSocketId = player.id
@@ -670,21 +672,19 @@ class PlayerLocal extends Player {
       game.speechBubble.update(data.message)
     })
 
-    $('#msg-form').submit(function (e) {
-      socket.emit('chat message', {
-        id: game.chatSocketId,
-        message: $('#m').val()
-      })
-      $('#m').val('')
-      return false
-    })
-
-    this.socket = socket
+    // $('#msg-form').submit(function (e) {
+    //   socket.emit('chat message', {
+    //     id: game.chatSocketId,
+    //     message: $('#m').val()
+    //   })
+    //   $('#m').val('')
+    //   return false
+    // })
   }
 
   initSocket() {
     //console.log("PlayerLocal.initSocket");
-    this.socket.emit('init', {
+    this.game.socket.emit('init', {
       model: this.model,
       colour: this.colour,
       x: this.object.position.x,
